@@ -1,32 +1,53 @@
+local has_monitoring_mod = minetest.get_modpath("monitoring")
 
-local old_check_player_privs = minetest.check_player_privs
+local hit_count, miss_count, cache_size
+
+if has_monitoring_mod then
+  hit_count = monitoring.counter("get_player_privs_cache_hit", "cache hits")
+  miss_count = monitoring.counter("get_player_privs_cache_miss", "cache misses")
+	cache_size = monitoring.gauge("get_player_privs_cache_size", "Count of all cached players")
+end
 
 local cache = {}
 
-minetest.check_player_privs = function(player_or_name, ...)
-	local playername = player_or_name
-	if type(player_or_name) == "table" and player_or_name.get_player_name then
-		playername = player_or_name:get_player_name()
+local old_get_player_privs = minetest.get_player_privs
+minetest.get_player_privs = function(name)
+	local privs = cache[name]
+	if privs == nil then
+		if has_monitoring_mod then
+			miss_count.inc()
+		end
+		privs = old_get_player_privs(name)
+		cache[name] = privs
+	else
+		hit_count.inc()
 	end
 
-	local requested_privs = {...}
-	print(dump(requested_privs))
+	return privs
+end
 
-	local result = cache[playername]
-	if result == nil then
-		-- cache miss
-		result = {true, {}}
-		result[1], result[2] = old_check_player_privs(player_or_name, unpack(requested_privs))
-		print("db hit", player_or_name, result[1], dump(result[2]))
-		cache[playername] = { result[1], result[2] }
+-- invalidation on set_privs and leave-player
+
+local old_set_player_privs = minetest.set_player_privs
+minetest.set_player_privs = function(name, privs)
+	cache[name] = nil
+	old_set_player_privs(name, privs);
+end
+
+minetest.register_on_leaveplayer(function(player)
+	cache[player:get_player_name()] = nil
+end)
+
+-- monitoring stuff
+if has_monitoring_mod then
+	local function count_entries()
+		local count = 0
+		for _ in ipairs(cache) do
+			count = count + 1
+		end
+		cache_size.set(count)
+		minetest.after(5, count_entries)
 	end
 
-	return result[1], result[2]
+	minetest.after(5, count_entries)
 end
-
-local function invalidate()
-	cache = {}
-	minetest.after(2, invalidate)
-end
-
-minetest.after(2, invalidate)

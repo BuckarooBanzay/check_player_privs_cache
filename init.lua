@@ -30,7 +30,7 @@ end
 
 local old_set_player_privs = minetest.set_player_privs
 minetest.set_player_privs = function(name, privs)
-	cache[name] = nil
+	cache[name] = privs
 	old_set_player_privs(name, privs);
 end
 

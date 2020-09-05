@@ -19,7 +19,7 @@ minetest.get_player_privs = function(name)
 		end
 		privs = old_get_player_privs(name)
 		cache[name] = privs
-	else
+	elseif has_monitoring_mod then
 		hit_count.inc()
 	end
 
